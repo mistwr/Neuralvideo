@@ -13,6 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -22,8 +23,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: NDK
-        run: echo "y" | sdkmanager "ndk;26.3.11579264"
+      - name: Instalar NDK
+        run: |
+          echo "y" | sdkmanager "ndk;26.3.11579264"
+          echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> local.properties
+
+      - name: Aumentar memoria Gradle
+        run: |
+          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m" >> gradle.properties
+          echo "org.gradle.daemon=false" >> gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -31,15 +41,23 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*') }}
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/libs.versions.toml') }}
 
       - name: Permissao gradlew
         run: chmod +x gradlew
 
       - name: Compilar APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build_log.txt; exit ${PIPESTATUS[0]}
+
+      - name: Upload log se falhar
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-error-log
+          path: build_log.txt
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: NeuroVid-APK
